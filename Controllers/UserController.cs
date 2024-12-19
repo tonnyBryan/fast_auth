@@ -23,8 +23,8 @@ namespace fast_authenticator.Controllers
         {
             try
             {
-                IEnumerable<User> users = _service.FindAllUser();
-                return Ok(new ApiResponse<IEnumerable<User>>(200, users)); 
+                IEnumerable<User> usersList = _service.FindAllUser();
+                return Ok(new ApiResponse<IEnumerable<User>>(200, usersList)); 
             }
             catch (Exception ex)
             {
