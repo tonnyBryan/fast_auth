@@ -1,0 +1,10 @@
+﻿# Utiliser l'image officielle PostgreSQL
+FROM postgres:10
+
+# Définir les variables d'environnement pour la configuration initiale
+ENV POSTGRES_USER=postgres
+ENV POSTGRES_PASSWORD=postgres
+ENV POSTGRES_DB=auth_data
+
+# Copier le script SQL pour créer la base de données et les tables
+COPY table.sql /docker-entrypoint-initdb.d/
