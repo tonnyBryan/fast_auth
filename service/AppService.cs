@@ -139,28 +139,6 @@ namespace fast_auth.service
             _context.ResetEmailRequests.Remove(resetEmailRequest);
         }
 
-        private string GenerateJwtToken(string role)
-        {
-            var claims = new[]
-            {
-                new Claim(ClaimTypes.Role, role),
-                new Claim(ClaimTypes.Name, role)
-            };
-
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("mySuperSecureKeyThatIs32CharsLong!"));
-            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-            var token = new JwtSecurityToken(
-                issuer: "yourIssuer",
-                audience: "yourAudience",
-                claims: claims,
-                expires: DateTime.Now.AddHours(1),
-                signingCredentials: creds
-            );
-
-            return new JwtSecurityTokenHandler().WriteToken(token);
-        }
-
         public void AddToken(Token token)
         {
             _context.Tokens.Add(token);
