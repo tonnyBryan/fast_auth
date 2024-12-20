@@ -12,6 +12,7 @@ namespace fast_authenticator.context
         public DbSet<Authentification> Authentifications { get; set; }
         public DbSet<UniqueKey> UniqueKeys { get; set; }
         public DbSet<ResetEmailRequest> ResetEmailRequests { get; set; }
+        public DbSet<Token> Tokens { get; set; }
 
         public MyDbContext(DbContextOptions<MyDbContext> options) : base(options)
         {

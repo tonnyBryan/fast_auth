@@ -1,4 +1,5 @@
-﻿using fast_auth.model.dto;
+﻿using fast_auth.annotation;
+using fast_auth.model.dto;
 using fast_auth.model.tiers;
 using fast_auth.service;
 using fast_authenticator.model;
@@ -12,10 +13,18 @@ namespace fast_authenticator.Controllers
     public class UserController : ControllerBase
     {
         private readonly AppService _service;
+        private readonly TokenService _tokenService;
+
 
         public UserController(AppService service)
         {
             _service = service;
+
+            string secretKey = "123456789101112131415161718192021222324";
+            string issuer = "myApp";
+            string audience = "myAppUsers";
+
+            _tokenService = new TokenService(secretKey, issuer, audience);
         }
 
         [HttpGet]
@@ -33,6 +42,7 @@ namespace fast_authenticator.Controllers
             }
         }
 
+        [TokenRequired]
         [HttpPut]
         public IActionResult Update([FromBody] UserModificationDTO userDTO)
         {
@@ -142,13 +152,18 @@ namespace fast_authenticator.Controllers
             user.IdStatus = statusNormal.IdStatus;
 
             //_service.UpdateUser(user);
+
+            Token token = new Token();
+            token.Key = _tokenService.GenerateToken(user.Username);
+            token.DateCreation = DateTime.UtcNow;
+            token.DateExpiration = DateTime.UtcNow.AddHours(1);
+            token.IdUser = user.IdUser;
+
             _service.PushData();
 
-            Console.WriteLine(user.IdStatus);
-            Console.WriteLine(statusNormal.IdStatus);
-
+            SuccessAuth successAuth = new SuccessAuth(user, token.Key);
             _service.HidePassword(user);
-            return Ok(new ApiResponse<User>(200, user, "confirmé"));
+            return Ok(new ApiResponse<SuccessAuth>(200, successAuth, "confirmé"));
         }
 
         [HttpPost("login")]
@@ -199,7 +214,7 @@ namespace fast_authenticator.Controllers
                 Pin = pin,
                 IdUser = user.IdUser,
                 User = user,
-                Expiration = DateTime.UtcNow.AddSeconds(20),
+                Expiration = DateTime.UtcNow.AddSeconds(90),
                 AKey = AppUtil.GenerateSecretUniqueKey(user)
             };
 
@@ -269,10 +284,19 @@ namespace fast_authenticator.Controllers
             }
 
             _service.RemoveAuthentification(authData);
+
+            Token token = new Token();
+            token.Key = _tokenService.GenerateToken(user.Username);
+            token.DateCreation = DateTime.UtcNow;
+            token.DateExpiration = DateTime.UtcNow.AddHours(1);
+            token.IdUser = user.IdUser;
+
+            _service.AddToken(token);
             _service.PushData();
 
+            SuccessAuth successAuth = new SuccessAuth(user, token.Key);
             _service.HidePassword(user);
-            return Ok(new ApiResponse<User>(200, user));
+            return Ok(new ApiResponse<SuccessAuth>(200, successAuth));
         }
 
         [HttpPost("sendReset")]
