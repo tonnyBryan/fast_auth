@@ -38,7 +38,7 @@ namespace fast_authenticator.Controllers
             catch (Exception ex)
             {
                 Error err = new(500);
-                return StatusCode(500, new ApiResponse<string>(500, $"Erreur lors de la récupération des utilisateurs: {ex.Message}", err));
+                return Ok(new ApiResponse<string>(500, $"Erreur lors de la récupération des utilisateurs: {ex.Message}", err));
             }
         }
 
@@ -50,7 +50,8 @@ namespace fast_authenticator.Controllers
             if (user == null)
             {
                 Error err = new(500);
-                return Unauthorized(new ApiResponse<string>(401, "Utilisateur introuvable", err));
+                // Unauthorized
+                return Ok(new ApiResponse<string>(401, "Utilisateur introuvable", err));
             }
 
             bool modified = false;
@@ -81,7 +82,8 @@ namespace fast_authenticator.Controllers
             if (_service.EmailExist(registrationDTO.Email))
             {
                 Error err = new(500);
-                return Unauthorized(new ApiResponse<string>(401, "Un utilisateur avec cet email existe déjà.", err));
+                // Unauthorized
+                return Ok(new ApiResponse<string>(401, "Un utilisateur avec cet email existe déjà.", err));
             }
 
             var hashedPassword = AppUtil.Crypt(registrationDTO.Password);
@@ -115,7 +117,8 @@ namespace fast_authenticator.Controllers
                 _service.PushData();
 
                 Error err = new(500);
-                return StatusCode(500, new ApiResponse<string>(500, "Email Sending failed", err));
+                // internal server error
+                return Ok(new ApiResponse<string>(500, "Erreur d'envoie de l'email", err));
             }
 
             _service.PushData();
@@ -129,7 +132,8 @@ namespace fast_authenticator.Controllers
             if (uKey == null)
             {
                 Error err = new(500);
-                return Unauthorized(new ApiResponse<string>(401, "Clé Invalide", err));
+                // Unauthorized
+                return Ok(new ApiResponse<string>(401, "Clé Invalide", err));
             }
 
             var user = _service.FindUserById(uKey.IdUser);
@@ -137,7 +141,8 @@ namespace fast_authenticator.Controllers
             if (user == null)
             {
                 Error err = new(500);
-                return BadRequest(new ApiResponse<string>(405, "Utilisateur inexistant", err));
+                // bad request
+                return Ok(new ApiResponse<string>(405, "Utilisateur inexistant", err));
             }
 
             _service.RemoveUniqueKey(uKey);
@@ -159,6 +164,7 @@ namespace fast_authenticator.Controllers
             token.DateExpiration = DateTime.UtcNow.AddHours(1);
             token.IdUser = user.IdUser;
 
+            _service.AddToken(token);
             _service.PushData();
 
             SuccessAuth successAuth = new SuccessAuth(user, token.Key);
@@ -173,7 +179,7 @@ namespace fast_authenticator.Controllers
             if (user == null)
             {
                 Error err = new(500);
-                return Unauthorized(new ApiResponse<string>(401, "Email introuvable", err));
+                return Ok(new ApiResponse<string>(401, "Email introuvable", err));
             }
 
             bool passwordMatches = _service.IsPasswordMatches(loginDTO.Password, user.Password);
@@ -186,20 +192,31 @@ namespace fast_authenticator.Controllers
                     _service.PushData();
 
                     Error err = new(550);
-                    return Unauthorized(new ApiResponse<string>(401, "Mot de passe incorrect, Votre compte est bloqué, Reinitialiser", err));
+                    // Unauthorized
+                    return Ok(new ApiResponse<string>(401, "Mot de passe incorrect, Votre compte est bloqué, Reinitialiser", err));
                 }
 
                 user.NbTentative++;
                 _service.PushData();
 
                 Error err2 = new(500);
-                return Unauthorized(new ApiResponse<string>(401, "Mot de passe incorrect.", err2));
+                // Unauthorized
+                return Ok(new ApiResponse<string>(401, "Mot de passe incorrect.", err2));
             }
 
             if (user.IdStatus == statusBloque.IdStatus)
             {
                 Error err = new(550);
-                return Unauthorized(new ApiResponse<string>(401, "Utilisateur Bloqué , Reinitialiser votre compte", err));
+                // Unauthorized
+                return Ok(new ApiResponse<string>(401, "Utilisateur Bloqué , Reinitialiser votre compte", err));
+            }
+
+            var statusAttente = _service.FindStatus("attente");
+            if (user.IdStatus == statusAttente.IdStatus)
+            {
+                Error err = new(555);
+                // Unauthorized
+                return Ok(new ApiResponse<string>(401, "Utilisateur nom confirmé", err));
             }
 
             if (user.NbTentative > 0)
@@ -224,7 +241,8 @@ namespace fast_authenticator.Controllers
             } catch (Exception)
             {
                 Error err = new(500);
-                return StatusCode(500, new ApiResponse<string>(500, "Email Sending failed", err));
+                // internal server error
+                return Ok(new ApiResponse<string>(500, "Erreur d'envoie de l'email", err));
             }
 
             _service.RemoveAuthentificationsOf(user);
@@ -241,27 +259,31 @@ namespace fast_authenticator.Controllers
             if (authData == null)
             {
                 Error err = new(500);
-                return StatusCode(401, new ApiResponse<string>(401, "Authentification introuvable", err));
+                // 401
+                return Ok(new ApiResponse<string>(401, "Authentification introuvable", err));
             }
 
             if (_service.IsExpired(authData.Expiration))
             {
                 Error err = new(500);
-                return StatusCode(401, new ApiResponse<string>(401, "Authentification expirée", err));
+                // 401
+                return Ok(new ApiResponse<string>(401, "Authentification expirée", err));
             }
 
             var user = _service.FindUserById(authData.IdUser);
             if (user == null) 
             {
                 Error err = new(500);
-                return StatusCode(401, new ApiResponse<string>(401, "Authentification invalide", err));
+                // 401
+                return Ok(new ApiResponse<string>(401, "Authentification invalide", err));
             }
 
             var statusBloque = _service.FindStatus("bloque");
             if (user.IdStatus == statusBloque.IdStatus)
             {
                 Error err = new(550);
-                return StatusCode(401, new ApiResponse<string>(401, "Utilisateur bloqué", err));
+                // 401
+                return Ok(new ApiResponse<string>(401, "Utilisateur bloqué", err));
             }
 
             if (authDTO.Pin != authData.Pin) 
@@ -274,13 +296,15 @@ namespace fast_authenticator.Controllers
                     _service.PushData();
 
                     Error err = new(550);
-                    return StatusCode(401, new ApiResponse<string>(401, "Utilisateur bloqué", err));
+                    // 401
+                    return Ok(new ApiResponse<string>(401, "Utilisateur bloqué", err));
                 }
 
                 _service.PushData();
 
                 Error err2 = new(500);
-                return StatusCode(401, new ApiResponse<string>(401, "Pin incorrect", err2));
+                // 401
+                return Ok(new ApiResponse<string>(401, "Pin incorrect", err2));
             }
 
             _service.RemoveAuthentification(authData);
@@ -306,12 +330,15 @@ namespace fast_authenticator.Controllers
             if (user == null)
             {
                 Error err = new(500);
-                return Unauthorized(new ApiResponse<string>(401, "Email introuvable", err));
+                // unauthorized
+                return Ok(new ApiResponse<string>(401, "Email introuvable", err));
             }
 
             var statusBloque = _service.FindStatus("bloque");
             if (user.IdStatus == statusBloque.IdStatus)
             {
+                _service.FindResetEmailRequestByEmailAndRemove(mailDTO.Email);  
+
                 string hashKey = AppUtil.GenerateSecretUniqueKey(user);
                 ResetEmailRequest req = new ResetEmailRequest(mailDTO.Email , hashKey);
                 _service.AddResetEmailRequest(req);
@@ -322,12 +349,14 @@ namespace fast_authenticator.Controllers
                 } catch (Exception)
                 {
                     Error err = new(500);
-                    return StatusCode(500, new ApiResponse<string>(500, "Email Sending failed", err));
+                    // internam server error
+                    return Ok(new ApiResponse<string>(500, "Erreur d'envoie de l'email", err));
                 }
             } else
             {
                 Error err = new(500);
-                return StatusCode(401, new ApiResponse<string>(401, "Non accepté", err));
+                // 401
+                return Ok(new ApiResponse<string>(401, "Non accepté", err));
             }
 
             _service.PushData();
@@ -342,7 +371,8 @@ namespace fast_authenticator.Controllers
             if (resetReq == null)
             {
                 Error err = new(500);
-                return Unauthorized(new ApiResponse<string>(401, "Reinitialisation key introuvable", err));
+                // unauthorized
+                return Ok(new ApiResponse<string>(401, "Clé de reinitialisation introuvable", err));
             }
 
             var statusBloque = _service.FindStatus("bloque");
@@ -352,13 +382,15 @@ namespace fast_authenticator.Controllers
             if (user == null)
             {
                 Error err = new(500);
-                return Unauthorized(new ApiResponse<string>(401, "Internal server error", err));
+                // unauthorized
+                return Ok(new ApiResponse<string>(401, "Erreur interne du serveur", err));
             }
 
             if (user.IdStatus != statusBloque.IdStatus)
             {
                 Error err = new(500);
-                return StatusCode(500, new ApiResponse<string>(500, "Reinitialisation non autorisé", err));
+                // internal server error
+                return Ok(new ApiResponse<string>(500, "Reinitialisation non autorisé", err));
             }
 
             user.NbTentative = 0;
@@ -367,7 +399,7 @@ namespace fast_authenticator.Controllers
             _service.RemoveResetEmailRequest(resetReq);
             _service.PushData();
 
-            return Ok(new ApiResponse<string>(true, 200, "reinitialisation fait"));
+            return Ok(new ApiResponse<string>(true, 200, "Reinitialisation ok"));
         }
     }
 }

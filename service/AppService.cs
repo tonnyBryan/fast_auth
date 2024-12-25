@@ -134,6 +134,15 @@ namespace fast_auth.service
             return _context.ResetEmailRequests.FirstOrDefault(u => u.Rkey == key);
         }
 
+        public void FindResetEmailRequestByEmailAndRemove(string email)
+        {
+            var rst = _context.ResetEmailRequests.FirstOrDefault(u => u.Email == email);
+            if (rst != null)
+            {
+                _context.ResetEmailRequests.Remove(rst);
+            }
+        }
+
         public void RemoveResetEmailRequest(ResetEmailRequest resetEmailRequest)
         {
             _context.ResetEmailRequests.Remove(resetEmailRequest);
@@ -141,6 +150,11 @@ namespace fast_auth.service
 
         public void AddToken(Token token)
         {
+            var tokenData = _context.Tokens.FirstOrDefault(t => t.IdUser == token.IdUser);
+            if (tokenData != null)
+            {
+                _context.Tokens.Remove(tokenData);
+            }
             _context.Tokens.Add(token);
         }
     }
