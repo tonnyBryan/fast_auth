@@ -1,0 +1,31 @@
+#version: '3.8'
+
+services:
+  app:
+    container_name: dotnet_app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=auth_data;Username=postgres;Password=postgres
+    depends_on:
+      - db
+
+  db:
+    container_name: postgres_db
+    image: postgres:10
+    restart: always
+    environment:
+      POSTGRES_DB: auth_data
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./table.sql:/docker-entrypoint-initdb.d/table.sql
+
+volumes:
+  postgres-data:

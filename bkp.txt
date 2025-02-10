@@ -1,0 +1,389 @@
+using BCrypt.Net;
+using fast_auth.model.dto;
+using fast_auth.model.tiers;
+using fast_authenticator.context;
+using fast_authenticator.model;
+using fast_authenticator.model.tiers;
+using fast_authenticator.util;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Text.RegularExpressions;
+
+namespace fast_authenticator.Controllers
+{
+    [ApiController]
+    [Route("/api/[controller]")]
+    public class UserController : ControllerBase
+    {
+        private readonly MyDbContext _context;
+
+        public UserController(MyDbContext context)
+        {
+            _context = context;
+        }
+
+        [HttpGet]
+        public async Task<ActionResult<ApiResponse<IEnumerable<User>>>> GetAllUsers()
+        {
+            try
+            {
+                var users = await _context.Users.Include(u => u.Status).ToListAsync();
+                return Ok(new ApiResponse<IEnumerable<User>>(200, users)); 
+            }
+            catch (Exception ex)
+            {
+                Error err = new(500);
+                return StatusCode(500, new ApiResponse<string>(500, $"Erreur lors de la récupération des utilisateurs: {ex.Message}", err));
+            }
+        }
+
+        [HttpPut]
+        public IActionResult Update([FromBody] UserModificationDTO userDTO)
+        {
+            //ici
+            var user = _context.Users.FirstOrDefault(u => u.IdUser == userDTO.IdUser);
+            if (user == null)
+            {
+                Error err = new(500);
+                return Unauthorized(new ApiResponse<string>(401, "Utilisateur introuvable", err));
+            }
+
+            bool modified = false;
+
+            if (userDTO.Username.Length != 0)
+            {
+                modified = true;
+                user.Username = userDTO.Username;
+            }
+
+            if (userDTO.Password.Length != 0)
+            {
+                modified = true;
+                user.Password = userDTO.Password;
+            }
+
+            if (modified)
+            {
+                _context.SaveChanges();
+            }
+
+            return Ok(new ApiResponse<User>(200, user, "modifié"));
+        }
+
+        [HttpPost("register")]
+        public IActionResult Register([FromBody] UserRegistrationDTO registrationDTO)
+        {
+            //ici
+            if (_context.Users.Any(u => u.Email == registrationDTO.Email))
+            {
+                Error err = new(500);
+                return Unauthorized(new ApiResponse<string>(401, "Un utilisateur avec cet email existe déjà.", err));
+            }
+
+            //ici
+            var hashedPassword = BCrypt.Net.BCrypt.HashPassword(registrationDTO.Password);
+            var status = _context.Statuses.FirstOrDefault(u => u.Description.Equals("attente"));
+
+            var newUser = new User
+            {
+                Username = registrationDTO.Username,
+                Email = registrationDTO.Email,
+                Password = hashedPassword, 
+                NbTentative = 0,
+                IdStatus = status.IdStatus,
+                DateCreation = default
+            };
+
+            //ici
+            _context.Users.Add(newUser);
+            _context.SaveChanges();
+
+
+            //ici
+            string key = AppUtil.GeneratePin(10) + newUser.IdUser.ToString();
+            string hashKey = Regex.Replace(BCrypt.Net.BCrypt.HashPassword(key), @"[^a-zA-Z0-9 ]", "");
+
+
+            //ICI
+            UniqueKey uK = new UniqueKey(hashKey, newUser.IdUser);
+            _context.UniqueKeys.Add(uK);
+            string url = "http://localhost:5106/api/User/confirm?key=" + hashKey;
+
+            try
+            {
+                MailSender.SendEmail(newUser.Email, "Confirmation Mail", url);
+            } catch (Exception ex)
+            {
+
+                //ici
+                _context.UniqueKeys.Remove(uK);
+                _context.Users.Remove(newUser);
+                _context.SaveChanges();
+
+                Error err = new(500);
+                return StatusCode(500, new ApiResponse<string>(500, "Email Sending failed", err));
+            }
+
+            _context.SaveChanges();
+
+            return Ok(new ApiResponse<string>(true, 200, "Reussi! Confirmez votre mail"));
+        }
+
+        [HttpPost("confirm")]
+        public IActionResult Auth([FromQuery(Name = "key")] string key)
+        {
+            //ici
+            var uKey = _context.UniqueKeys.FirstOrDefault(u => u.Skey == key);
+            if (uKey == null)
+            {
+                Error err = new(500);
+                return Unauthorized(new ApiResponse<string>(401, "Clé Invalide", err));
+            }
+
+            //ici
+            var authData = _context.Users.FirstOrDefault(u => u.IdUser == uKey.IdUser);
+
+            if (authData == null)
+            {
+                Error err = new(500);
+                return BadRequest(new ApiResponse<string>(405, "Utilisateur inexistant", err));
+            }
+
+            //ici
+            _context.UniqueKeys.Remove(uKey);
+
+            //ici
+            var status = _context.Statuses.FirstOrDefault(u => u.Description.Equals("attente"));
+            if (authData.IdStatus != status.IdStatus)
+            {
+                return Ok(new ApiResponse<string>(200, "Déjà confirmé"));
+            }
+
+            //ici
+            status = _context.Statuses.FirstOrDefault(u => u.Description.Equals("normal"));
+            authData.IdStatus = status.IdStatus;
+
+            _context.SaveChanges();
+
+            //ici
+            authData.Password = "";
+            return Ok(new ApiResponse<User>(200, authData, "confirmé"));
+        }
+
+        [HttpPost("login")]
+        public IActionResult Login([FromBody] UserLoginDTO loginDTO)
+        {
+            //ici
+            var user = _context.Users.FirstOrDefault(u => u.Email == loginDTO.Email);
+            if (user == null)
+            {
+                Error err = new(500);
+                return Unauthorized(new ApiResponse<string>(401, "Email introuvable", err));
+            }
+
+
+            //ici
+            bool passwordMatches = BCrypt.Net.BCrypt.Verify(loginDTO.Password, user.Password);
+            var statusBloque = _context.Statuses.FirstOrDefault(u => u.Description.Equals("bloque"));
+
+            if (!passwordMatches)
+            {
+                if (user.NbTentative >= 3 - 1)
+                {
+                    user.IdStatus = statusBloque.IdStatus;
+
+                    _context.SaveChanges();
+
+                    Error err = new(550);
+                    return Unauthorized(new ApiResponse<string>(401, "Limite de tentative de connection atteinte, ...", err));
+                }
+
+                user.NbTentative++;
+                _context.SaveChanges();
+                Error err2 = new(500);
+                return Unauthorized(new ApiResponse<string>(401, "Mot de passe incorrect.", err2));
+            }
+
+            if (user.IdStatus == statusBloque.IdStatus)
+            {
+                Error err = new(550);
+                return Unauthorized(new ApiResponse<string>(401, "Utilisateur Bloqué , Reinitialiser votre compte"));
+            }
+
+            if (user.NbTentative > 0)
+            {
+                user.NbTentative = 0;
+                _context.SaveChanges();
+            }
+
+            string pin = AppUtil.GeneratePin(6);
+            Authentification auth = new()
+            {
+                Pin = pin,
+                IdUser = user.IdUser,
+                User = user,
+                Expiration = DateTime.UtcNow.AddSeconds(1000),
+                AKey = Regex.Replace(BCrypt.Net.BCrypt.HashPassword(user.IdUser.ToString()), @"[^a-zA-Z0-9 ]", "")
+            };
+
+            try
+            {
+                MailSender.SendEmail(user.Email, "Code Pin", AppUtil.GeneratePinDiv(pin));
+            } catch (Exception ex)
+            {
+                Error err = new(500);
+                return StatusCode(500, new ApiResponse<string>(500, "Email Sending failed", err));
+            }
+
+
+            //ici
+            var authentificationsToRemove = _context.Authentifications
+            .Where(a => a.IdUser == user.IdUser) 
+            .ToList(); 
+
+            //ici
+            _context.Authentifications.RemoveRange(authentificationsToRemove);
+            _context.Authentifications.Add(auth);
+            _context.SaveChanges();
+
+            return Ok(new ApiResponse<string>(200, auth.AKey, "Verifier votre mail")); 
+        }
+
+        [HttpPost("auth")]
+        public IActionResult Auth([FromBody] UserAuthDTO authDTO)
+        {
+            //ici
+            var authData = _context.Authentifications.FirstOrDefault(u => u.AKey == authDTO.AKey);
+
+            if (authData == null)
+            {
+                Error err = new(500);
+                return StatusCode(401, new ApiResponse<string>(401, "Authentification introuvable", err));
+            }
+
+            //ici
+            if (authData.Expiration < DateTime.UtcNow.AddHours(3))
+            {
+                Error err = new(500);
+                return StatusCode(401, new ApiResponse<string>(401, "Authentification expirée", err));
+            }
+
+            var user = _context.Users.FirstOrDefault(u => u.IdUser == authData.IdUser);
+            if (user == null) 
+            {
+                Error err = new(500);
+                return StatusCode(401, new ApiResponse<string>(401, "Authentification invalide", err));
+            }
+
+            var statusBloque = _context.Statuses.FirstOrDefault(u => u.Description.Equals("bloque"));
+            if (user.IdStatus == statusBloque.IdStatus)
+            {
+                Error err = new(550);
+                return StatusCode(401, new ApiResponse<string>(401, "Utilisateur bloqué", err));
+            }
+
+            if (authDTO.Pin != authData.Pin) 
+            {
+                user.NbTentative++;
+
+                if (user.NbTentative == 3)
+                {
+                    user.IdStatus = statusBloque.IdStatus;
+                    _context.SaveChanges();
+                    Error err = new(550);
+                    return StatusCode(401, new ApiResponse<string>(401, "Utilisateur bloqué", err));
+                }
+
+                _context.SaveChanges();
+
+                Error err2 = new(500);
+                return StatusCode(401, new ApiResponse<string>(401, "Pin incorrect", err2));
+            }
+
+            _context.Authentifications.Remove(authData);
+            _context.SaveChanges();
+
+            user.Password = "";
+            return Ok(new ApiResponse<User>(200, user));
+        }
+
+        [HttpPost("sendReset")]
+        public IActionResult Reset([FromBody] UserMailDTO mailDTO)
+        {
+            var user = _context.Users.FirstOrDefault(u => u.Email == mailDTO.Email);
+            if (user == null)
+            {
+                Error err = new(500);
+                return Unauthorized(new ApiResponse<string>(401, "Email introuvable", err));
+            }
+
+
+            var statusBloque = _context.Statuses.FirstOrDefault(u => u.Description.Equals("bloque"));
+            if (user.IdStatus == statusBloque.IdStatus)
+            {
+
+                //ici
+                string keyRd = AppUtil.GeneratePin(3);
+                string key = keyRd + user.IdUser.ToString();
+                string hashKey = Regex.Replace(BCrypt.Net.BCrypt.HashPassword(key), @"[^a-zA-Z0-9 ]", "");
+                ResetEmailRequest req = new ResetEmailRequest(mailDTO.Email , hashKey);
+                _context.ResetEmailRequests.Add(req);
+                string url = "http://localhost:5106/api/User/reset?key=" + hashKey;
+
+                try
+                {
+                    MailSender.SendEmail(user.Email, "Reinitialisation", url);
+                } catch (Exception ex)
+                {
+                    Error err = new(500);
+                    return StatusCode(500, new ApiResponse<string>(500, "Email Sending failed", err));
+                }
+            } else
+            {
+                Error err = new(500);
+                return StatusCode(401, new ApiResponse<string>(401, "Non accepté", err));
+            }
+
+            _context.SaveChanges();
+            return Ok(new ApiResponse<string>(true, 200, "Email envoyé"));
+        }
+
+
+        [HttpPost("reset")]
+        public IActionResult Reset([FromQuery(Name = "key")] string key)
+        {
+            var resetReq = _context.ResetEmailRequests.FirstOrDefault(u => u.Rkey == key);
+            if (resetReq == null)
+            {
+                Error err = new(500);
+                return Unauthorized(new ApiResponse<string>(401, "Reinitialisation key introuvable", err));
+            }
+
+            var statusBloque = _context.Statuses.FirstOrDefault(u => u.Description.Equals("bloque"));
+            var statusNormal = _context.Statuses.FirstOrDefault(u => u.Description.Equals("normal"));
+
+            var user = _context.Users.FirstOrDefault(u => u.Email == resetReq.Email);
+            if (user == null)
+            {
+                Error err = new(500);
+                return Unauthorized(new ApiResponse<string>(401, "Internal server error", err));
+            }
+
+            if (user.IdStatus != statusBloque.IdStatus)
+            {
+                Error err = new(500);
+                return StatusCode(500, new ApiResponse<string>(500, "Reinitialisation non autorisé", err));
+            }
+
+            user.NbTentative = 0;
+            user.IdStatus = statusNormal.IdStatus;
+
+            _context.ResetEmailRequests.Remove(resetReq);
+
+            _context.SaveChanges();
+
+            return Ok(new ApiResponse<string>(true, 200, "reinitialisation fait"));
+        }
+
+    }
+}

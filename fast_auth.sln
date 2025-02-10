@@ -1,0 +1,30 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.9.34728.123
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "fast_auth", "fast_auth.csproj", "{A2713AF0-E7DE-4BCA-AA93-1672006A52A1}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Éléments de solution", "Éléments de solution", "{9EF66C16-C12E-4564-971F-F183CDA8EC3C}"
+	ProjectSection(SolutionItems) = preProject
+		bkp.txt = bkp.txt
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A2713AF0-E7DE-4BCA-AA93-1672006A52A1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A2713AF0-E7DE-4BCA-AA93-1672006A52A1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A2713AF0-E7DE-4BCA-AA93-1672006A52A1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A2713AF0-E7DE-4BCA-AA93-1672006A52A1}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {832A2EF0-941B-4ED4-8013-4249EB6FD751}
+	EndGlobalSection
+EndGlobal

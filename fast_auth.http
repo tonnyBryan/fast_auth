@@ -1,0 +1,6 @@
+@fast_auth_HostAddress = http://localhost:5106
+
+GET {{fast_auth_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
